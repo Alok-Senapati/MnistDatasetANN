@@ -92,3 +92,36 @@ def visualize_accuracy(
         plt.close(fig)
     else:
         plt.show()
+
+
+def visualize_lr(
+    lrs: Iterable,
+    save_path: Path | None = None,
+) -> None:
+    """Plot learning rate decay over epochs.
+
+    Args:
+        lrs: Per-epoch learning rate values.
+        save_path: Optional output path for the PNG file.
+    """
+    lr_values = _to_floats(lrs)
+    epochs = list(range(1, len(lr_values) + 1))
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(epochs, lr_values, marker="o", label="Learning Rate", color="tab:purple")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Learning Rate")
+    ax.set_title("Learning Rate Schedule")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+
+    if save_path is not None:
+        target = Path(save_path)
+        if target.suffix == "":
+            target = target.with_suffix(".png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(target, dpi=200)
+        plt.close(fig)
+    else:
+        plt.show()

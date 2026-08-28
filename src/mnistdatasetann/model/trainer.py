@@ -8,9 +8,16 @@ from typing import Literal
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import CosineAnnealingLR, LRScheduler, ReduceLROnPlateau, StepLR
 from torch.utils.data import DataLoader
 
-from mnistdatasetann.utils import Timer, section_printer, visualize_accuracy, visualize_loss
+from mnistdatasetann.utils import (
+    Timer,
+    section_printer,
+    visualize_accuracy,
+    visualize_loss,
+    visualize_lr,
+)
 
 
 def get_optimizer(
@@ -48,6 +55,39 @@ def get_optimizer(
     raise ValueError(f"Invalid optimizer. Please select from {valid}.")
 
 
+def get_scheduler(
+    optimizer: Optimizer,
+    scheduler_name: Literal["none", "step", "cosine", "plateau"],
+    min_lr: float,
+    lr_decay_factor: float,
+    lr_step_size: int,
+) -> LRScheduler | None:
+    """
+    Create the requested LRScheduler for the supplied optimizer.
+
+    Args:
+        optimizer: Optimizer whose lr will be updated by the scheduler
+        scheduler_name: Name of the scheduler to use
+        min_lr: Minimum learning rate
+        lr_decay_factor: Factor γ for plateau/step decay
+        lr_step_size: Epoch interval for StepLR
+
+    Returns:
+        Requested LRScheduler.
+    """
+    match scheduler_name:
+        case "step":
+            return StepLR(optimizer=optimizer, step_size=lr_step_size, gamma=lr_decay_factor)
+        case "cosine":
+            return CosineAnnealingLR(optimizer=optimizer, T_max=10, eta_min=min_lr)
+        case "plateau":
+            return ReduceLROnPlateau(
+                optimizer=optimizer, mode="min", factor=lr_decay_factor, patience=3, min_lr=min_lr
+            )
+        case _:
+            return None
+
+
 @section_printer("Model Training")
 def train(
     train_loader: DataLoader,
@@ -58,6 +98,7 @@ def train(
     epochs: int,
     model_init_args: dict,
     device: Literal["cpu", "cuda"],
+    lr_scheduler: LRScheduler | None,
     output_path: Path,
     patience: int = 10,
 ) -> nn.Module:
@@ -84,6 +125,7 @@ def train(
     val_accuracies: list[float] = []
     best_val_loss = float("inf")
     degrade_counter = 0
+    learning_rates: list[float] = []
 
     for epoch in range(1, epochs + 1):
         with Timer() as elapsed_timer:
@@ -155,14 +197,23 @@ def train(
                 print(f"Early stopping at epoch: {epoch}...")
                 break
 
+        learning_rates.append(optimizer.param_groups[0]["lr"])
+        if lr_scheduler is not None:
+            if isinstance(lr_scheduler, ReduceLROnPlateau):
+                lr_scheduler.step(val_loss)
+            else:
+                lr_scheduler.step()
+
         print(
-            f"Epoch: {epoch}/{epochs}, Time: {elapsed_timer.elapsed:.2f}s, "
-            f"Training Loss: {train_loss:.4f}, Accuracy: {train_accuracy:.4f} "
-            f"Validation Loss: {val_loss:.4f}, Accuracy: {val_accuracy:.4f}"
+            f"Epoch: {epoch:02d}/{epochs}, "
+            f"Time: {elapsed_timer.elapsed:.2f}s, LR: {optimizer.param_groups[0]['lr']:.6f} "
+            f"| Training Loss: {train_loss:.4f}, Accuracy: {train_accuracy:.4f} "
+            f"| Validation Loss: {val_loss:.4f}, Accuracy: {val_accuracy:.4f} "
         )
 
     visualize_accuracy(
         training_accuracies, val_accuracies, save_path=output_path / "accuracy_plot.png"
     )
     visualize_loss(training_losses, val_losses, save_path=output_path / "loss_plot.png")
+    visualize_lr(learning_rates, save_path=output_path / "lr_plot.png")
     return model

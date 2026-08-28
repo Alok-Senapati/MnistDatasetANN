@@ -12,10 +12,10 @@ from pathlib import Path
 import torch
 
 from mnistdatasetann.data import load_mnist_data
-from mnistdatasetann.model import MLPClassifier, get_optimizer
+from mnistdatasetann.model import MLPClassifier, get_optimizer, get_scheduler
 from mnistdatasetann.utils.printer import section_printer
 from mnistdatasetann.utils.timer import Timer
-from mnistdatasetann.utils.visualizer import visualize_accuracy, visualize_loss
+from mnistdatasetann.utils.visualizer import visualize_accuracy, visualize_loss, visualize_lr
 
 
 class TestSectionPrinter(unittest.TestCase):
@@ -89,6 +89,24 @@ class TestOptimizerFactory(unittest.TestCase):
             get_optimizer(model, "unsupported", 1e-3, 0.0, 0.9)
 
 
+class TestSchedulerFactory(unittest.TestCase):
+    """Confirm the scheduler factory returns the expected scheduler objects."""
+
+    def test_supported_schedulers(self) -> None:
+        model = MLPClassifier(hidden=[8], in_dim=4, out_dim=3, dropout=0.0, use_batchnorm=False)
+        optimizer = get_optimizer(model, "adam", 1e-3, 0.0, 0.9)
+
+        step = get_scheduler(optimizer, "step", 1e-6, 0.1, 5)
+        cosine = get_scheduler(optimizer, "cosine", 1e-6, 0.1, 5)
+        plateau = get_scheduler(optimizer, "plateau", 1e-6, 0.1, 5)
+        none = get_scheduler(optimizer, "none", 1e-6, 0.1, 5)
+
+        self.assertIsInstance(step, torch.optim.lr_scheduler.StepLR)
+        self.assertIsInstance(cosine, torch.optim.lr_scheduler.CosineAnnealingLR)
+        self.assertIsInstance(plateau, torch.optim.lr_scheduler.ReduceLROnPlateau)
+        self.assertIsNone(none)
+
+
 class TestMnistDataLoader(unittest.TestCase):
     """Smoke-test the real CSV data loading path used by the training pipeline."""
 
@@ -111,12 +129,15 @@ class TestVisualizationHelpers(unittest.TestCase):
             output_dir = Path(tmp_dir)
             loss_path = output_dir / "loss_plot"
             accuracy_path = output_dir / "accuracy_plot"
+            lr_path = output_dir / "lr_plot"
 
             visualize_loss([1.0, 0.7, 0.5], [1.2, 0.9, 0.6], save_path=loss_path)
             visualize_accuracy([0.5, 0.7, 0.8], [0.4, 0.65, 0.75], save_path=accuracy_path)
+            visualize_lr([1e-3, 5e-4, 1e-4], save_path=lr_path)
 
             self.assertTrue((loss_path.with_suffix(".png")).exists())
             self.assertTrue((accuracy_path.with_suffix(".png")).exists())
+            self.assertTrue((lr_path.with_suffix(".png")).exists())
 
 
 if __name__ == "__main__":

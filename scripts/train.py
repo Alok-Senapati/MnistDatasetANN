@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import time
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
@@ -13,7 +15,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from mnistdatasetann.args.args_class import TrainingArgs
 from mnistdatasetann.data import load_mnist_data
-from mnistdatasetann.model import MLPClassifier, get_optimizer, train
+from mnistdatasetann.model import MLPClassifier, get_optimizer, get_scheduler, train
 
 RANDOM_SEED = 42
 os.environ["PYTHONHASHSEED"] = f"{RANDOM_SEED}"
@@ -68,6 +70,31 @@ def parse_cli_args() -> TrainingArgs:
         default=10,
         help="Number of epochs without validation improvement before early stopping.",
     )
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        choices=["none", "step", "cosine", "plateau"],
+        default="none",
+        help="Learning rate scheduler family.",
+    )
+    parser.add_argument(
+        "--min-lr",
+        type=float,
+        default=1e-6,
+        help="Minimum learning rate floor for schedulers.",
+    )
+    parser.add_argument(
+        "--lr-decay-factor",
+        type=float,
+        default=0.5,
+        help="Multiplicative factor of learning rate decay.",
+    )
+    parser.add_argument(
+        "--lr-step-size",
+        type=int,
+        default=5,
+        help="Period of learning rate decay in epochs for StepLR.",
+    )
 
     return parser.parse_args(namespace=TrainingArgs())
 
@@ -85,7 +112,10 @@ def main() -> None:
     torch.cuda.manual_seed(RANDOM_SEED)
     torch.cuda.manual_seed_all(RANDOM_SEED)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
     print(f"Device: {device}")
 
     # Each run gets a dedicated artifact directory so multiple experiments can coexist.
@@ -124,6 +154,13 @@ def main() -> None:
     model = MLPClassifier(**model_init_args).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = get_optimizer(model, args.optimizer, args.lr, args.weight_decay, args.momentum)
+    lr_scheduler = get_scheduler(
+        optimizer=optimizer,
+        scheduler_name=args.scheduler,
+        min_lr=args.min_lr,
+        lr_decay_factor=args.lr_decay_factor,
+        lr_step_size=args.lr_step_size,
+    )
 
     train(
         train_loader=train_loader,
@@ -134,9 +171,13 @@ def main() -> None:
         epochs=args.epochs,
         model_init_args=model_init_args,
         device=device,
+        lr_scheduler=lr_scheduler,
         output_path=artifacts_dir,
         patience=args.patience,
     )
+
+    with open(artifacts_dir / "training_args.json", "w", encoding="utf-8") as f:
+        json.dump(asdict(args), f, indent=2)
 
 
 if __name__ == "__main__":
