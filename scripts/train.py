@@ -12,6 +12,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.tensorboard import SummaryWriter
 
 from mnistdatasetann.args.args_class import TrainingArgs
 from mnistdatasetann.data import load_mnist_data
@@ -96,6 +97,12 @@ def parse_cli_args() -> TrainingArgs:
         default=5,
         help="Period of learning rate decay in epochs for StepLR.",
     )
+    parser.add_argument(
+        "--use-tensorboard",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable or disable TensorBoard experiment tracking.",
+    )
 
     return parser.parse_args(namespace=TrainingArgs())
 
@@ -162,6 +169,9 @@ def main() -> None:
         lr_decay_factor=args.lr_decay_factor,
         lr_step_size=args.lr_step_size,
     )
+    writer: SummaryWriter | None = None
+    if args.use_tensorboard:
+        writer = SummaryWriter(log_dir=str(artifacts_dir / "tensorboard"))
 
     _, best_model = train(
         train_loader=train_loader,
@@ -175,6 +185,8 @@ def main() -> None:
         lr_scheduler=lr_scheduler,
         output_path=artifacts_dir,
         patience=args.patience,
+        use_tensorboard=args.use_tensorboard,
+        writer=writer,
     )
 
     results = evaluate(
@@ -202,6 +214,25 @@ def main() -> None:
 
     with open(artifacts_dir / "classification_report.json", "w", encoding="utf-8") as f:
         json.dump(results["report_dict"], f, indent=2)
+
+    if writer is not None:
+        writer.add_hparams(
+            hparam_dict={
+                "lr": args.lr,
+                "optimizer": args.optimizer,
+                "batch_size": args.batch_size,
+                "lr_scheduler": args.scheduler,
+                "use_batchnorm": args.use_batchnorm,
+                "dropout": args.dropout,
+                "weight_decay": args.weight_decay,
+                "lr_decay_factor": args.lr_decay_factor,
+                "lr_step_size": args.lr_step_size,
+            },
+            metric_dict={
+                "eval/test_accuracy": float(results["report_dict"]["accuracy"]),
+            },
+        )
+        writer.close()
 
 
 if __name__ == "__main__":

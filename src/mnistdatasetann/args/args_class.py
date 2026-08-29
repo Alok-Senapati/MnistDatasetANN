@@ -24,10 +24,11 @@ class TrainingArgs:
         hidden: Hidden-layer sizes of the MLP network.
         use_batchnorm: Whether to include batch normalization after hidden layers.
         weight_decay: L2 regularization strength applied by the optimizer.
-        scheduler: Scheduler family to use for lr updates.
-        min_lr: Minimum learning rate
-        lr_decay_factor: Factor γ for plateau/step decay
-        lr_step_size: Epoch interval for StepLR
+        scheduler: Scheduler family to use for dynamic learning rate updates.
+        min_lr: Minimum learning rate floor for schedulers.
+        lr_decay_factor: Multiplicative factor for plateau and step LR decay.
+        lr_step_size: Epoch interval for StepLR decay.
+        use_tensorboard: Whether to enable TensorBoard for tracking and diagnostics.
     """
 
     epochs: int = 20
@@ -44,3 +45,4 @@ class TrainingArgs:
     min_lr: float = 1e-6
     lr_decay_factor: float = 0.5
     lr_step_size: int = 5
+    use_tensorboard: bool = True

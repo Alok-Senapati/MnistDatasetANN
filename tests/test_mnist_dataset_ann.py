@@ -14,6 +14,7 @@ import torch
 
 from mnistdatasetann.data import load_mnist_data
 from mnistdatasetann.model import MLPClassifier, evaluate, get_optimizer, get_scheduler, load_model
+from mnistdatasetann.utils.diagnose import compute_gradient_norms
 from mnistdatasetann.utils.printer import section_printer
 from mnistdatasetann.utils.timer import Timer
 from mnistdatasetann.utils.visualizer import (
@@ -52,6 +53,22 @@ class TestTimer(unittest.TestCase):
 
         self.assertGreaterEqual(timer.elapsed, 0.0)
         self.assertIsNotNone(timer.start_time)
+
+
+class TestDiagnostics(unittest.TestCase):
+    """Validate gradient norms computation helper."""
+
+    def test_compute_gradient_norms_with_gradients(self) -> None:
+        model = MLPClassifier(hidden=[8], in_dim=4, out_dim=3, dropout=0.0, use_batchnorm=False)
+        inputs = torch.randn(2, 4)
+        targets = torch.tensor([0, 1])
+        loss = torch.nn.functional.cross_entropy(model(inputs), targets)
+        loss.backward()
+
+        norms = compute_gradient_norms(model)
+        self.assertIn("grad_norm/total", norms)
+        self.assertGreater(norms["grad_norm/total"], 0.0)
+        self.assertTrue(any("head.weight" in k for k in norms))
 
 
 class TestMLPClassifier(unittest.TestCase):

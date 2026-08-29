@@ -12,9 +12,11 @@ from sklearn.metrics import classification_report
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR, LRScheduler, ReduceLROnPlateau, StepLR
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
 from mnistdatasetann.utils import (
     Timer,
+    compute_gradient_norms,
     section_printer,
     visualize_accuracy,
     visualize_loss,
@@ -101,12 +103,14 @@ def train(
     optimizer: Optimizer,
     epochs: int,
     model_init_args: dict,
-    device: Literal["cpu", "cuda"],
+    device: Literal["cpu", "cuda"] | str | torch.device,
     lr_scheduler: LRScheduler | None,
     output_path: Path,
     patience: int = 10,
+    use_tensorboard: bool = True,
+    writer: SummaryWriter | None = None,
 ) -> tuple[nn.Module, nn.Module]:
-    """Train the model with early stopping and save the best checkpoint.
+    """Train the model with early stopping, diagnostics logging, and save checkpoints.
 
     Args:
         train_loader: Data loader that yields the training batches.
@@ -117,11 +121,15 @@ def train(
         epochs: Maximum number of epochs to run before stopping.
         model_init_args: Initial configuration used to describe the model architecture.
         device: Device on which tensor operations should execute.
+        lr_scheduler: Optional scheduler for updating learning rate dynamically.
         output_path: Directory used for checkpoints and training-curve plots.
-        patience: Number of epochs without validation-improvement before early stopping.
+        patience: Number of epochs without validation improvement before early stopping.
+        use_tensorboard: Whether to enable TensorBoard experiment tracking.
+        writer: Optional external SummaryWriter instance. If None and use_tensorboard is True,
+            a new SummaryWriter will be initialized and closed at the end of training.
 
     Returns:
-        The trained model instance after the final epoch and the best scoring model..
+        A tuple containing (final_model, best_saved_model).
     """
     checkpoint_path = output_path / "best_model.pt"
     training_losses: list[float] = []
@@ -131,6 +139,15 @@ def train(
     best_val_loss = float("inf")
     degrade_counter = 0
     learning_rates: list[float] = []
+
+    created_writer = False
+    if writer is None and use_tensorboard:
+        writer = SummaryWriter(log_dir=str(output_path / "tensorboard"))
+        created_writer = True
+
+    if writer is not None:
+        sample_input = next(iter(train_loader))[0][:1].to(device)
+        writer.add_graph(model, sample_input)
 
     for epoch in range(1, epochs + 1):
         with Timer() as elapsed_timer:
@@ -202,7 +219,23 @@ def train(
                 print(f"Early stopping at epoch: {epoch}...")
                 break
 
-        learning_rates.append(optimizer.param_groups[0]["lr"])
+        current_lr = optimizer.param_groups[0]["lr"]
+
+        if writer is not None:
+            writer.add_scalar("loss/train", train_loss, epoch)
+            writer.add_scalar("loss/val", val_loss, epoch)
+            writer.add_scalar("accuracy/train", train_accuracy, epoch)
+            writer.add_scalar("accuracy/val", val_accuracy, epoch)
+            writer.add_scalar("LearningRate", current_lr, epoch)
+
+            for name, param in model.named_parameters():
+                writer.add_histogram(f"parameters/{name}", param, epoch)
+
+            gradient_norms = compute_gradient_norms(model)
+            for tag, value in gradient_norms.items():
+                writer.add_scalar(tag, value, epoch)
+
+        learning_rates.append(current_lr)
         if lr_scheduler is not None:
             if isinstance(lr_scheduler, ReduceLROnPlateau):
                 lr_scheduler.step(val_loss)
@@ -211,10 +244,13 @@ def train(
 
         print(
             f"Epoch: {epoch:02d}/{epochs}, "
-            f"Time: {elapsed_timer.elapsed:.2f}s, LR: {optimizer.param_groups[0]['lr']:.6f} "
+            f"Time: {elapsed_timer.elapsed:.2f}s, LR: {current_lr:.6f} "
             f"| Training Loss: {train_loss:.4f}, Accuracy: {train_accuracy:.4f} "
             f"| Validation Loss: {val_loss:.4f}, Accuracy: {val_accuracy:.4f} "
         )
+
+    if created_writer and writer is not None:
+        writer.close()
 
     visualize_accuracy(
         training_accuracies, val_accuracies, save_path=output_path / "accuracy_plot.png"
