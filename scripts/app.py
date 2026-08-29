@@ -1,4 +1,4 @@
-"""Interactive Streamlit application for handwritten digit recognition."""
+"""Interactive Streamlit application for handwritten digit recognition with live canvas."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 import torch
 from PIL import Image
+from streamlit_drawable_canvas import st_canvas
 
 from mnistdatasetann.model import load_model
 from mnistdatasetann.utils import preprocess_image
@@ -63,7 +64,6 @@ def render_sidebar(
     if not checkpoints:
         st.sidebar.error("No trained model checkpoints found under artifacts/")
         st.sidebar.info("Train a model first using: `uv run python scripts/train.py`")
-
         return None, True, "otsu", "cpu"
 
     selected_label = st.sidebar.selectbox("Select Model Run", options=list(checkpoints.keys()))
@@ -77,8 +77,7 @@ def render_sidebar(
     auto_invert = st.sidebar.checkbox(
         "Auto-Invert Colors",
         value=True,
-        help="Automatically inverts dark ink on light background"
-        " to match MNIST (bright digits on dark backgrounds).",
+        help="Automatically inverts dark ink on light background to match MNIST format.",
     )
 
     preprocess_option = st.sidebar.radio(
@@ -98,11 +97,66 @@ def render_sidebar(
     return model, auto_invert, preprocess_method, device
 
 
+def render_prediction_dashboard(
+    raw_image: Image.Image,
+    model: torch.nn.Module,
+    auto_invert: bool,
+    preprocess_method: str,
+    device: str,
+) -> None:
+    """Run model inference on the input image and render the visual prediction dashboard."""
+    feature_array, canvas_28x28 = preprocess_image(
+        raw_image, auto_invert=auto_invert, method=preprocess_method
+    )
+    input_tensor = torch.tensor(feature_array, dtype=torch.float32).to(device)
+
+    with torch.no_grad():
+        if hasattr(model, "predict_proba"):
+            probs = model.predict_proba(input_tensor)[0].cpu().numpy()
+        else:
+            logits = model(input_tensor)
+            probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
+
+    predicted_digit = int(np.argmax(probs))
+    confidence = float(probs[predicted_digit]) * 100.0
+
+    st.divider()
+
+    col1, col2, col3 = st.columns([1, 1, 1.5])
+
+    with col1:
+        st.subheader("🖼️ Preprocessing")
+        st.image(raw_image, caption="Input Image", use_container_width=True)
+        scaled_preview = canvas_28x28.resize((140, 140), Image.Resampling.NEAREST)
+        st.image(scaled_preview, caption="28x28 Model Input", use_container_width=False)
+
+    with col2:
+        st.subheader("🎯 Prediction")
+        st.metric(
+            label="Predicted Digit",
+            value=f"{predicted_digit}",
+            delta=f"{confidence:.2f}% Confidence",
+        )
+
+        top3_idx = np.argsort(probs)[::-1][:3]
+        st.markdown("**Top Candidates:**")
+        for rank, idx in enumerate(top3_idx, 1):
+            st.write(f"**#{rank} Digit {idx}**: `{(probs[idx] * 100):.2f}%`")
+
+    with col3:
+        st.subheader("📊 Class Probabilities")
+        df_probs = pd.DataFrame(
+            {"Probability (%)": probs * 100.0},
+            index=[f"Digit {i}" for i in range(10)],
+        )
+        st.bar_chart(df_probs, y="Probability (%)")
+
+
 def main() -> None:
     """Run the Streamlit frontend for interactive digit classification."""
     st.title("🔢 MNIST Handwritten Digit Classifier")
     st.markdown(
-        "Upload an image of a handwritten digit (any resolution or format) to see "
+        "Draw a digit live in the interactive canvas or upload an image to see "
         "real-time preprocessing, model inference, and probability distributions."
     )
 
@@ -112,57 +166,58 @@ def main() -> None:
     if model is None:
         return
 
-    uploaded_file = st.file_uploader(
-        "Upload a digit image (drawn or photographed)", type=["png", "jpg", "jpeg", "webp"]
-    )
+    tab_canvas, tab_upload = st.tabs(["✍️ Live Drawing Canvas", "📁 Upload Image"])
 
-    if uploaded_file is not None:
-        raw_image = Image.open(uploaded_file)
+    with tab_canvas:
+        st.markdown("Draw a digit (0–9) below. The model will classify it in real time:")
 
-        feature_array, canvas_28x28 = preprocess_image(
-            raw_image, auto_invert=auto_invert, method=preprocess_method
+        col_canvas, col_settings = st.columns([1.2, 1])
+
+        with col_settings:
+            stroke_width = st.slider("Stroke Width", min_value=8, max_value=32, value=18)
+            dark_canvas = st.checkbox("Dark Canvas (White Ink on Black)", value=True)
+            bg_color = "#000000" if dark_canvas else "#FFFFFF"
+            stroke_color = "#FFFFFF" if dark_canvas else "#000000"
+            st.caption("Use the trash bin icon on the bottom toolbar to clear the canvas.")
+
+        with col_canvas:
+            canvas_result = st_canvas(
+                fill_color="rgba(255, 255, 255, 0.0)",
+                stroke_width=stroke_width,
+                stroke_color=stroke_color,
+                background_color=bg_color,
+                height=280,
+                width=280,
+                drawing_mode="freedraw",
+                key="interactive_digit_canvas",
+                display_toolbar=True,
+            )
+
+        if canvas_result.image_data is not None:
+            img_arr = canvas_result.image_data.astype(np.uint8)
+            # Check if any strokes have been drawn on canvas
+            has_strokes = False
+            if dark_canvas and np.any(img_arr[:, :, :3] > 40):
+                has_strokes = True
+            elif not dark_canvas and np.any(img_arr[:, :, :3] < 210):
+                has_strokes = True
+
+            if has_strokes:
+                drawn_image = Image.fromarray(img_arr)
+                render_prediction_dashboard(
+                    drawn_image, model, auto_invert, preprocess_method, device
+                )
+
+    with tab_upload:
+        uploaded_file = st.file_uploader(
+            "Upload a digit image (drawn or photographed)",
+            type=["png", "jpg", "jpeg", "webp"],
+            key="file_uploader_widget",
         )
-        input_tensor = torch.tensor(feature_array, dtype=torch.float32).to(device)
 
-        with torch.no_grad():
-            if hasattr(model, "predict_proba"):
-                probs = model.predict_proba(input_tensor)[0].cpu().numpy()
-            else:
-                logits = model(input_tensor)
-                probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
-
-        predicted_digit = int(np.argmax(probs))
-        confidence = float(probs[predicted_digit]) * 100.0
-
-        st.divider()
-
-        col1, col2, col3 = st.columns([1, 1, 1.5])
-
-        with col1:
-            st.subheader("🖼️ Preprocessing")
-            st.image(raw_image, caption="Uploaded Original", use_container_width=True)
-            scaled_preview = canvas_28x28.resize((140, 140), Image.Resampling.NEAREST)
-            st.image(scaled_preview, caption="28x28 Model Input", use_container_width=False)
-
-        with col2:
-            st.subheader("🎯 Prediction")
-            st.metric(
-                label="Predicted Digit",
-                value=f"{predicted_digit}",
-                delta=f"{confidence:.2f}% Confidence",
-            )
-
-            top3_idx = np.argsort(probs)[::-1][:3]
-            st.markdown("**Top Candidates:**")
-            for rank, idx in enumerate(top3_idx, 1):
-                st.write(f"**#{rank} Digit {idx}**: `{(probs[idx] * 100):.2f}%`")
-
-        with col3:
-            st.subheader("📊 Class Probabilities")
-            df_probs = pd.DataFrame(
-                {"Probability (%)": probs * 100.0}, index=[f"Digit {i}" for i in range(10)]
-            )
-            st.bar_chart(df_probs, y="Probability (%)")
+        if uploaded_file is not None:
+            raw_image = Image.open(uploaded_file)
+            render_prediction_dashboard(raw_image, model, auto_invert, preprocess_method, device)
 
 
 if __name__ == "__main__":
