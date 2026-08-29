@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 
 
 def _to_floats(values: Iterable) -> list[float]:
@@ -122,6 +124,108 @@ def visualize_lr(
             target = target.with_suffix(".png")
         target.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(target, dpi=200)
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def visualize_confusion_matrix(
+    y_true: np.ndarray | Iterable,
+    y_pred: np.ndarray | Iterable,
+    classes: list[int] | list[str] | None = None,
+    save_path: Path | None = None,
+) -> None:
+    """Plot the multi-class confusion matrix heatmap.
+
+    Args:
+        y_true: Ground truth target labels.
+        y_pred: Predicted class labels.
+        classes: Ordered list of unique class labels.
+        save_path: Optional output path for the PNG file.
+    """
+    cm = confusion_matrix(y_true, y_pred, labels=classes)
+    fig, ax = plt.subplots(figsize=(8, 8))
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes)
+    disp.plot(cmap="Blues", ax=ax, colorbar=False, values_format="d")
+    ax.set_title("Confusion Matrix")
+    fig.tight_layout()
+
+    if save_path is not None:
+        target = Path(save_path)
+        if target.suffix == "":
+            target = target.with_suffix(".png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(target, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def visualize_misclassified(
+    images: np.ndarray,
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    y_probs: np.ndarray | None = None,
+    max_samples: int = 10,
+    save_path: Path | None = None,
+) -> None:
+    """Plot a grid of sample images that were misclassified by the model.
+
+    If probability scores are provided, the samples with highest prediction
+    confidence on the wrong class (hard negatives) are displayed first.
+
+    Args:
+        images: 2D feature matrix of flattened image samples (N, 784).
+        y_true: Ground truth labels.
+        y_pred: Predicted class labels.
+        y_probs: Optional predicted class probability distributions (N, num_classes).
+        max_samples: Maximum number of misclassified samples to display.
+        save_path: Optional output path for the PNG file.
+    """
+    mistake_indices = np.where(y_pred != y_true)[0]
+    if len(mistake_indices) == 0:
+        return
+
+    if y_probs is not None:
+        confidences = [y_probs[i, y_pred[i]] for i in mistake_indices]
+        sorted_order = np.argsort(confidences)[::-1]
+        selected_indices = mistake_indices[sorted_order[:max_samples]]
+    else:
+        selected_indices = mistake_indices[:max_samples]
+
+    n_samples = len(selected_indices)
+    cols = min(5, n_samples)
+    rows = (n_samples + cols - 1) // cols
+
+    fig, axes = plt.subplots(rows, cols, figsize=(3 * cols, 3 * rows), squeeze=False)
+    for idx, sample_idx in enumerate(selected_indices):
+        r, c = divmod(idx, cols)
+        ax = axes[r, c]
+        img = images[sample_idx].reshape(28, 28)
+        true_lbl = y_true[sample_idx]
+        pred_lbl = y_pred[sample_idx]
+
+        title = f"True: {true_lbl} | Pred: {pred_lbl}"
+        if y_probs is not None:
+            conf = y_probs[sample_idx, pred_lbl] * 100.0
+            title += f"\nConf: {conf:.1f}%"
+
+        ax.imshow(img, cmap="gray")
+        ax.set_title(title, color="darkred", fontsize=10)
+        ax.axis("off")
+
+    for idx in range(n_samples, rows * cols):
+        r, c = divmod(idx, cols)
+        axes[r, c].axis("off")
+
+    fig.tight_layout()
+
+    if save_path is not None:
+        target = Path(save_path)
+        if target.suffix == "":
+            target = target.with_suffix(".png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(target, dpi=200, bbox_inches="tight")
         plt.close(fig)
     else:
         plt.show()

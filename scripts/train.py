@@ -15,7 +15,8 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from mnistdatasetann.args.args_class import TrainingArgs
 from mnistdatasetann.data import load_mnist_data
-from mnistdatasetann.model import MLPClassifier, get_optimizer, get_scheduler, train
+from mnistdatasetann.model import MLPClassifier, evaluate, get_optimizer, get_scheduler, train
+from mnistdatasetann.utils import visualize_confusion_matrix, visualize_misclassified
 
 RANDOM_SEED = 42
 os.environ["PYTHONHASHSEED"] = f"{RANDOM_SEED}"
@@ -162,7 +163,7 @@ def main() -> None:
         lr_step_size=args.lr_step_size,
     )
 
-    train(
+    _, best_model = train(
         train_loader=train_loader,
         val_loader=val_loader,
         model=model,
@@ -176,8 +177,31 @@ def main() -> None:
         patience=args.patience,
     )
 
+    results = evaluate(
+        model=best_model, data_loader=_test_loader, device=device, classes=dataset.classes
+    )
+
+    visualize_confusion_matrix(
+        results["y_true"],
+        results["y_pred"],
+        classes=dataset.classes,
+        save_path=artifacts_dir / "confusion_matrix.png",
+    )
+
+    visualize_misclassified(
+        images=results["images"],
+        y_true=results["y_true"],
+        y_pred=results["y_pred"],
+        y_probs=results["y_probs"],
+        max_samples=20,
+        save_path=artifacts_dir / "misclassified_samples.png",
+    )
+
     with open(artifacts_dir / "training_args.json", "w", encoding="utf-8") as f:
         json.dump(asdict(args), f, indent=2)
+
+    with open(artifacts_dir / "classification_report.json", "w", encoding="utf-8") as f:
+        json.dump(results["report_dict"], f, indent=2)
 
 
 if __name__ == "__main__":

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
+import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.metrics import classification_report
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR, LRScheduler, ReduceLROnPlateau, StepLR
 from torch.utils.data import DataLoader
@@ -18,6 +20,8 @@ from mnistdatasetann.utils import (
     visualize_loss,
     visualize_lr,
 )
+
+from .loader import load_model
 
 
 def get_optimizer(
@@ -101,7 +105,7 @@ def train(
     lr_scheduler: LRScheduler | None,
     output_path: Path,
     patience: int = 10,
-) -> nn.Module:
+) -> tuple[nn.Module, nn.Module]:
     """Train the model with early stopping and save the best checkpoint.
 
     Args:
@@ -117,8 +121,9 @@ def train(
         patience: Number of epochs without validation-improvement before early stopping.
 
     Returns:
-        The trained model instance after the final epoch.
+        The trained model instance after the final epoch and the best scoring model..
     """
+    checkpoint_path = output_path / "best_model.pt"
     training_losses: list[float] = []
     training_accuracies: list[float] = []
     val_losses: list[float] = []
@@ -189,7 +194,7 @@ def train(
                     "val_loss": val_loss,
                     "val_acc": val_accuracy,
                 }
-                torch.save(checkpoint, output_path / "best_model.pt")
+                torch.save(checkpoint, checkpoint_path)
             else:
                 degrade_counter += 1
 
@@ -216,4 +221,99 @@ def train(
     )
     visualize_loss(training_losses, val_losses, save_path=output_path / "loss_plot.png")
     visualize_lr(learning_rates, save_path=output_path / "lr_plot.png")
-    return model
+
+    return model, load_model(checkpoint_path, device, eval_mode=True)
+
+
+@torch.no_grad()
+def evaluate(
+    model: nn.Module,
+    data_loader: DataLoader,
+    device: str | torch.device = "cpu",
+    classes: list[int] | list[str] | None = None,
+) -> dict[str, Any]:
+    """Evaluate a trained model on a dataset split and compute evaluation metrics.
+
+    This function sets the model into evaluation mode, iterates through the DataLoader
+    without gradient tracking, extracts features, ground truth targets, discrete predictions,
+    and class probabilities, and generates a classification report.
+
+    Args:
+        model: PyTorch neural network model to evaluate.
+        data_loader: DataLoader yielding `(inputs, targets)` batches.
+        device: Device on which evaluation computations execute (`'cpu'`, `'cuda'`, etc.).
+            Defaults to `'cpu'`.
+        classes: Optional list of class labels or digit names to filter in the report.
+
+    Returns:
+        A dictionary containing:
+            - ``"images"``: NumPy array of input samples `(N, 784)`.
+            - ``"y_true"``: 1D NumPy array of true labels `(N,)`.
+            - ``"y_pred"``: 1D NumPy array of predicted class labels `(N,)`.
+            - ``"y_probs"``: 2D NumPy array of predicted class probabilities `(N, num_classes)`.
+            - ``"report_dict"``: Classification report structured as a Python dictionary.
+            - ``"report_str"``: Textual classification report formatted for console display.
+
+    Raises:
+        ValueError: If `data_loader` is empty.
+    """
+    if len(data_loader) == 0:
+        raise ValueError("Cannot evaluate on an empty DataLoader.")
+
+    target_device = torch.device(device)
+    model.to(target_device)
+    model.eval()
+
+    all_inputs: list[np.ndarray] = []
+    all_targets: list[np.ndarray] = []
+    all_predictions: list[np.ndarray] = []
+    all_probabilities: list[np.ndarray] = []
+
+    with torch.no_grad():
+        for batch_features, batch_targets in data_loader:
+            batch_features = batch_features.to(target_device)
+
+            if hasattr(model, "predict_proba"):
+                batch_probs = model.predict_proba(batch_features)
+            else:
+                logits = model(batch_features)
+                batch_probs = torch.softmax(logits, dim=1)
+
+            if hasattr(model, "predict"):
+                batch_preds = model.predict(batch_features)
+            else:
+                batch_preds = torch.argmax(batch_probs, dim=1)
+
+            all_inputs.append(batch_features.detach().cpu().numpy())
+            all_targets.append(batch_targets.detach().cpu().numpy())
+            all_predictions.append(batch_preds.detach().cpu().numpy())
+            all_probabilities.append(batch_probs.detach().cpu().numpy())
+
+    images = np.concatenate(all_inputs, axis=0)
+    y_true = np.concatenate(all_targets, axis=0)
+    y_pred = np.concatenate(all_predictions, axis=0)
+    y_probs = np.concatenate(all_probabilities, axis=0)
+
+    report_dict = classification_report(
+        y_true=y_true,
+        y_pred=y_pred,
+        labels=classes,
+        output_dict=True,
+        zero_division=0,
+    )
+    report_str = classification_report(
+        y_true=y_true,
+        y_pred=y_pred,
+        labels=classes,
+        output_dict=False,
+        zero_division=0,
+    )
+
+    return {
+        "images": images,
+        "y_true": y_true,
+        "y_pred": y_pred,
+        "y_probs": y_probs,
+        "report_dict": report_dict,
+        "report_str": report_str,
+    }
