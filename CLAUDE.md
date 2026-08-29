@@ -1,25 +1,28 @@
 # CLAUDE.md
 
-## Project overview
+## Project Overview
 
-This repository contains a small PyTorch workflow for training a multilayer perceptron classifier on the MNIST dataset. It is intended to be easy to read, test, and extend for experiments.
+This repository contains a modular PyTorch workflow for training, evaluating, analyzing, and serving a Multilayer Perceptron (MLP) classifier on the MNIST dataset. It includes dynamic learning rate schedulers, error diagnostics, TensorBoard experiment tracking, and an interactive Streamlit web application with robust computer vision preprocessing.
 
-## Local workflow
+## Local Workflow
 
-- Install dependencies with `uv sync`
-- Run tests with `uv run pytest -q`
-- Format and lint with `uv run ruff format .` and `uv run ruff check . --fix`
-- Keep training outputs under `artifacts/` and generated dataset CSVs under `data/`
+- Install dependencies: `uv sync`
+- Run unit tests: `uv run pytest -q`
+- Lint and format: `uv run ruff format .` and `uv run ruff check . --fix`
+- Train model: `uv run python scripts/train.py --epochs 20 --use-tensorboard`
+- Launch TensorBoard: `uv run tensorboard --logdir artifacts/`
+- Launch Streamlit web demo: `uv run streamlit run scripts/app.py`
+- Training outputs are stored under `artifacts/<timestamp>/` and dataset files under `data/`
 
-## Code conventions
+## Code Conventions
 
-- Prefer small, explicit functions with docstrings and clear parameter names
-- Use type annotations for public APIs and data models
-- Add comments only where they clarify intent or non-obvious logic
-- Keep unit tests focused on behavior that is stable and independent of the full dataset pipeline
+- Prefer small, explicit functions with Google-style docstrings (`Args`, `Returns`) and clear parameter names
+- Use type annotations across public APIs, utilities, and dataclasses
+- Add comments only where they clarify intent or non-obvious algorithms
+- Keep unit tests fast, isolated, and focused on verifying model, preprocessing, and training components
 
-## Repository expectations
+## Repository Expectations
 
-- The dataset should be generated before training if CSV files are missing
-- Models and plots are saved under the `artifacts/` directory
-- Do not commit generated model checkpoints or dataset files unless explicitly required
+- Dataset files (`mnist_train.csv` and `mnist_test.csv`) are tracked via Git LFS
+- Generated experiment run artifacts are stored in `artifacts/`
+- Keep the test suite passing at 100% and linter rules clean before committing
