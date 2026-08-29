@@ -11,10 +11,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from PIL import Image
 
 from mnistdatasetann.data import load_mnist_data
 from mnistdatasetann.model import MLPClassifier, evaluate, get_optimizer, get_scheduler, load_model
 from mnistdatasetann.utils.diagnose import compute_gradient_norms
+from mnistdatasetann.utils.preprocessor import preprocess_image
 from mnistdatasetann.utils.printer import section_printer
 from mnistdatasetann.utils.timer import Timer
 from mnistdatasetann.utils.visualizer import (
@@ -69,6 +71,30 @@ class TestDiagnostics(unittest.TestCase):
         self.assertIn("grad_norm/total", norms)
         self.assertGreater(norms["grad_norm/total"], 0.0)
         self.assertTrue(any("head.weight" in k for k in norms))
+
+
+class TestPreprocessor(unittest.TestCase):
+    """Validate image preprocessing pipeline for arbitrary-resolution inputs."""
+
+    def test_preprocess_image_otsu_and_standard_modes(self) -> None:
+        img = Image.new("RGB", (100, 100), color=(255, 255, 255))
+        for x in range(30, 70):
+            for y in range(30, 70):
+                img.putpixel((x, y), (0, 0, 0))
+
+        # Test Otsu mode
+        features_otsu, canvas_otsu = preprocess_image(img, auto_invert=True, method="otsu")
+        self.assertEqual(features_otsu.shape, (1, 784))
+        self.assertEqual(canvas_otsu.size, (28, 28))
+        self.assertGreaterEqual(float(features_otsu.min()), 0.0)
+        self.assertLessEqual(float(features_otsu.max()), 1.0)
+
+        # Test Standard mode
+        features_std, canvas_std = preprocess_image(img, auto_invert=True, method="standard")
+        self.assertEqual(features_std.shape, (1, 784))
+        self.assertEqual(canvas_std.size, (28, 28))
+        self.assertGreaterEqual(float(features_std.min()), 0.0)
+        self.assertLessEqual(float(features_std.max()), 1.0)
 
 
 class TestMLPClassifier(unittest.TestCase):

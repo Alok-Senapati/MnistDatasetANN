@@ -1,6 +1,7 @@
 """Utility helpers for printing, timing, plotting, and gradient diagnostics."""
 
 from .diagnose import compute_gradient_norms
+from .preprocessor import preprocess_image
 from .printer import section_printer
 from .timer import Timer
 from .visualizer import (
@@ -19,5 +20,6 @@ __all__ = [
     "visualize_confusion_matrix",
     "visualize_misclassified",
     "compute_gradient_norms",
+    "preprocess_image",
     "Timer",
 ]
