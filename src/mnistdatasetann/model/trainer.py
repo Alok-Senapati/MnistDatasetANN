@@ -226,6 +226,7 @@ def train(
 
 
 @torch.no_grad()
+@section_printer("Evaluating on Test Set")
 def evaluate(
     model: nn.Module,
     data_loader: DataLoader,
@@ -269,25 +270,24 @@ def evaluate(
     all_predictions: list[np.ndarray] = []
     all_probabilities: list[np.ndarray] = []
 
-    with torch.no_grad():
-        for batch_features, batch_targets in data_loader:
-            batch_features = batch_features.to(target_device)
+    for batch_features, batch_targets in data_loader:
+        batch_features = batch_features.to(target_device)
 
-            if hasattr(model, "predict_proba"):
-                batch_probs = model.predict_proba(batch_features)
-            else:
-                logits = model(batch_features)
-                batch_probs = torch.softmax(logits, dim=1)
+        if hasattr(model, "predict_proba"):
+            batch_probs = model.predict_proba(batch_features)
+        else:
+            logits = model(batch_features)
+            batch_probs = torch.softmax(logits, dim=1)
 
-            if hasattr(model, "predict"):
-                batch_preds = model.predict(batch_features)
-            else:
-                batch_preds = torch.argmax(batch_probs, dim=1)
+        if hasattr(model, "predict"):
+            batch_preds = model.predict(batch_features)
+        else:
+            batch_preds = torch.argmax(batch_probs, dim=1)
 
-            all_inputs.append(batch_features.detach().cpu().numpy())
-            all_targets.append(batch_targets.detach().cpu().numpy())
-            all_predictions.append(batch_preds.detach().cpu().numpy())
-            all_probabilities.append(batch_probs.detach().cpu().numpy())
+        all_inputs.append(batch_features.detach().cpu().numpy())
+        all_targets.append(batch_targets.detach().cpu().numpy())
+        all_predictions.append(batch_preds.detach().cpu().numpy())
+        all_probabilities.append(batch_probs.detach().cpu().numpy())
 
     images = np.concatenate(all_inputs, axis=0)
     y_true = np.concatenate(all_targets, axis=0)
