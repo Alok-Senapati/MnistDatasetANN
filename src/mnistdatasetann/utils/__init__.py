@@ -7,6 +7,7 @@ from .timer import Timer
 from .visualizer import (
     visualize_accuracy,
     visualize_confusion_matrix,
+    visualize_feature_maps,
     visualize_loss,
     visualize_lr,
     visualize_misclassified,
@@ -19,6 +20,7 @@ __all__ = [
     "visualize_lr",
     "visualize_confusion_matrix",
     "visualize_misclassified",
+    "visualize_feature_maps",
     "compute_gradient_norms",
     "preprocess_image",
     "Timer",

@@ -29,6 +29,7 @@ from mnistdatasetann.utils.timer import Timer
 from mnistdatasetann.utils.visualizer import (
     visualize_accuracy,
     visualize_confusion_matrix,
+    visualize_feature_maps,
     visualize_loss,
     visualize_lr,
     visualize_misclassified,
@@ -150,6 +151,21 @@ class TestCNNClassifier(unittest.TestCase):
         self.assertEqual(probabilities.shape, (4, 10))
         self.assertTrue(torch.allclose(probabilities.sum(dim=1), torch.ones(4), atol=1e-5))
         self.assertEqual(predictions.shape, (4,))
+
+    def test_cnn_get_feature_maps(self) -> None:
+        model = CNNClassifier(
+            in_dims=(1, 28, 28),
+            conv_channels=(8, 16),
+            fc_hidden=32,
+            num_classes=10,
+        )
+        inputs = torch.randn(2, 1, 28, 28)
+        fmaps = model.get_feature_maps(inputs)
+
+        self.assertIn("conv1", fmaps)
+        self.assertIn("conv2", fmaps)
+        self.assertEqual(fmaps["conv1"].shape, (2, 8, 14, 14))
+        self.assertEqual(fmaps["conv2"].shape, (2, 16, 7, 7))
 
 
 class TestOptimizerFactory(unittest.TestCase):
@@ -340,11 +356,23 @@ class TestVisualizationHelpers(unittest.TestCase):
                 save_path=misclassified_path,
             )
 
+            fmaps_path = output_dir / "fmaps_plot"
+            fmaps_dummy = {
+                "conv1": torch.randn(1, 4, 14, 14),
+                "conv2": torch.randn(1, 8, 7, 7),
+            }
+            visualize_feature_maps(
+                feature_maps=fmaps_dummy,
+                raw_image=np.random.rand(28, 28),
+                save_path=fmaps_path,
+            )
+
             self.assertTrue((loss_path.with_suffix(".png")).exists())
             self.assertTrue((accuracy_path.with_suffix(".png")).exists())
             self.assertTrue((lr_path.with_suffix(".png")).exists())
             self.assertTrue((cm_path.with_suffix(".png")).exists())
             self.assertTrue((misclassified_path.with_suffix(".png")).exists())
+            self.assertTrue((fmaps_path.with_suffix(".png")).exists())
 
 
 if __name__ == "__main__":

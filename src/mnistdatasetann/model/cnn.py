@@ -42,6 +42,7 @@ class CNNClassifier(nn.Module):
         super().__init__()
         conv_layers: dict[str, nn.Module] = {}
         self.in_dims = in_dims
+        self.num_classes = num_classes
 
         in_channels = in_dims[0]
         image_dims = in_dims[1:]
@@ -70,6 +71,28 @@ class CNNClassifier(nn.Module):
             nn.Dropout(p=dropout),
             nn.Linear(fc_hidden, num_classes),
         )
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module: nn.Module) -> None:
+        """Initialize weights using activation-matched schemes (Kaiming Normal, Xavier Uniform).
+
+        Args:
+            module: Sub-module instance traversed by `self.apply()`.
+        """
+        if isinstance(module, nn.Conv2d):
+            nn.init.kaiming_normal_(module.weight, mode="fan_in", nonlinearity="relu")
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Linear):
+            if module.out_features == self.num_classes:
+                nn.init.xavier_uniform_(module.weight)
+            else:
+                nn.init.kaiming_normal_(module.weight, mode="fan_in", nonlinearity="relu")
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.BatchNorm2d):
+            nn.init.ones_(module.weight)
+            nn.init.zeros_(module.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Execute the forward pass through convolutional blocks and classification head.
@@ -117,3 +140,27 @@ class CNNClassifier(nn.Module):
         """
         layer_output = self.forward(x)
         return torch.argmax(layer_output, dim=1)
+
+    @torch.no_grad()
+    def get_feature_maps(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Extract intermediate activation feature maps from each convolutional block.
+
+        Args:
+            x: Input tensor of shape `(Batch, in_channels, H, W)` or `(Batch, Features)`.
+
+        Returns:
+            Dictionary mapping layer names (e.g. `"conv1"`, `"conv2"`) to their
+            output activation tensors of shape `(Batch, Channels, Height, Width)`.
+        """
+        if x.ndim == 2:
+            x = x.reshape(x.shape[0], *self.in_dims)
+
+        feature_maps: dict[str, torch.Tensor] = {}
+        conv_out: torch.Tensor = x
+
+        for name, layer in self.conv_layers.items():
+            conv_out = layer(conv_out)
+            feature_maps[name] = conv_out.detach().cpu()
+
+        return feature_maps
+

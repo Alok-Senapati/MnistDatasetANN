@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 
 
@@ -229,3 +230,121 @@ def visualize_misclassified(
         plt.close(fig)
     else:
         plt.show()
+
+
+def visualize_feature_maps(
+    feature_maps: dict[str, torch.Tensor],
+    raw_image: np.ndarray | torch.Tensor | None = None,
+    max_channels_per_layer: int = 16,
+    save_path: Path | None = None,
+) -> plt.Figure:
+    """Plot intermediate convolutional activation feature maps for an input image.
+
+    Args:
+        feature_maps: Dictionary mapping layer names (e.g. `"conv1"`, `"conv2"`)
+            to activation tensors of shape `(1, Channels, Height, Width)` or
+            `(Channels, Height, Width)`.
+        raw_image: Optional 2D `(28, 28)` or 1D `(784,)` original image array for reference.
+        max_channels_per_layer: Maximum number of feature map channels to display per layer.
+            Defaults to 16.
+        save_path: Optional output path for the saved PNG figure.
+
+    Returns:
+        The matplotlib `Figure` containing the feature map visualization grid.
+    """
+    n_layers = len(feature_maps)
+    if n_layers == 0:
+        fig, ax = plt.subplots(figsize=(4, 4))
+        ax.text(0.5, 0.5, "No Feature Maps Available", ha="center", va="center")
+        ax.axis("off")
+        return fig
+
+    # 1. Prepare raw input image if provided
+    has_raw = raw_image is not None
+
+    # 2. Determine grid width (max 8 channels per row per section)
+    cols = min(8, max_channels_per_layer)
+    section_rows: list[int] = []
+
+    if has_raw:
+        section_rows.append(1)
+
+    for layer_tensor in feature_maps.values():
+        n_ch = min(
+            max_channels_per_layer,
+            layer_tensor.shape[1] if layer_tensor.ndim == 4 else layer_tensor.shape[0],
+        )
+        rows_for_layer = (n_ch + cols - 1) // cols
+        section_rows.append(rows_for_layer)
+
+    total_grid_rows = sum(section_rows)
+    fig = plt.figure(figsize=(2.0 * cols, 2.2 * total_grid_rows))
+    grid_spec = fig.add_gridspec(total_grid_rows, cols)
+
+    current_row = 0
+
+    # 3. Render raw image in top row if available
+    if has_raw:
+        ax_raw = fig.add_subplot(grid_spec[0, :2])
+        if isinstance(raw_image, torch.Tensor):
+            arr_raw = raw_image.detach().cpu().numpy()
+        else:
+            arr_raw = np.asarray(raw_image)
+        if arr_raw.ndim == 1:
+            arr_raw = arr_raw.reshape((28, 28))
+        elif arr_raw.ndim == 3 and arr_raw.shape[0] == 1:
+            arr_raw = arr_raw[0]
+
+        ax_raw.imshow(arr_raw, cmap="gray")
+        ax_raw.set_title("Input Image (28x28)", fontsize=11, fontweight="bold")
+        ax_raw.axis("off")
+
+        # Blank out remaining columns in raw image row
+        for c in range(2, cols):
+            ax_blank = fig.add_subplot(grid_spec[0, c])
+            ax_blank.axis("off")
+
+        current_row += 1
+
+    # 4. Render feature maps for each convolutional block
+    for layer_name, tensor in feature_maps.items():
+        if tensor.ndim == 4:
+            activations = tensor[0].detach().cpu().numpy()
+        else:
+            activations = tensor.detach().cpu().numpy()
+
+        num_channels = min(max_channels_per_layer, activations.shape[0])
+        h, w = activations.shape[1], activations.shape[2]
+
+        for ch in range(num_channels):
+            r = current_row + (ch // cols)
+            c = ch % cols
+            ax = fig.add_subplot(grid_spec[r, c])
+            feature_slice = activations[ch]
+
+            # Use viridis colormap for activation intensity
+            ax.imshow(feature_slice, cmap="viridis")
+            ax.set_title(f"{layer_name} ch{ch + 1}\n({h}x{w})", fontsize=8)
+            ax.axis("off")
+
+        # Turn off unused subplot axes in the layer's allocated rows
+        allocated_rows = (num_channels + cols - 1) // cols
+        for leftover in range(num_channels, allocated_rows * cols):
+            r = current_row + (leftover // cols)
+            c = leftover % cols
+            ax = fig.add_subplot(grid_spec[r, c])
+            ax.axis("off")
+
+        current_row += allocated_rows
+
+    fig.tight_layout()
+
+    if save_path is not None:
+        target = Path(save_path)
+        if target.suffix == "":
+            target = target.with_suffix(".png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(target, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+
+    return fig

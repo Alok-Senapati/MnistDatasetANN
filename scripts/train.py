@@ -24,7 +24,11 @@ from mnistdatasetann.model import (
     get_scheduler,
     train,
 )
-from mnistdatasetann.utils import visualize_confusion_matrix, visualize_misclassified
+from mnistdatasetann.utils import (
+    visualize_confusion_matrix,
+    visualize_feature_maps,
+    visualize_misclassified,
+)
 
 RANDOM_SEED = 42
 os.environ["PYTHONHASHSEED"] = f"{RANDOM_SEED}"
@@ -241,6 +245,18 @@ def main() -> None:
         max_samples=20,
         save_path=artifacts_dir / "misclassified_samples.png",
     )
+
+    if hasattr(best_model, "get_feature_maps"):
+        sample_tensor = X_test[:1].to(device)
+        fmaps = best_model.get_feature_maps(sample_tensor)
+        fig_fmaps = visualize_feature_maps(
+            feature_maps=fmaps,
+            raw_image=X_test[0].numpy(),
+            max_channels_per_layer=16,
+            save_path=artifacts_dir / "conv_feature_maps.png",
+        )
+        if writer is not None:
+            writer.add_figure("diagnostics/conv_feature_maps", fig_fmaps)
 
     with open(artifacts_dir / "training_args.json", "w", encoding="utf-8") as f:
         json.dump(asdict(args), f, indent=2)

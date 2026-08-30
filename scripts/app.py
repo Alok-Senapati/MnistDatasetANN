@@ -13,7 +13,7 @@ from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
 from mnistdatasetann.model import load_model
-from mnistdatasetann.utils import preprocess_image
+from mnistdatasetann.utils import preprocess_image, visualize_feature_maps
 
 BASE_ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "artifacts"
 
@@ -150,6 +150,19 @@ def render_prediction_dashboard(
             index=[f"Digit {i}" for i in range(10)],
         )
         st.bar_chart(df_probs, y="Probability (%)")
+
+    if hasattr(model, "get_feature_maps"):
+        with st.expander("🔍 View Convolutional Feature Maps (Layer Activations)", expanded=False):
+            st.markdown(
+                "Visualizing intermediate channel activations captured by each convolutional block:"
+            )
+            fmaps = model.get_feature_maps(input_tensor[:1])
+            fig_fmaps = visualize_feature_maps(
+                feature_maps=fmaps,
+                raw_image=feature_array[0],
+                max_channels_per_layer=16,
+            )
+            st.pyplot(fig_fmaps)
 
 
 def main() -> None:
