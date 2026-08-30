@@ -16,7 +16,14 @@ from torch.utils.tensorboard import SummaryWriter
 
 from mnistdatasetann.args.args_class import TrainingArgs
 from mnistdatasetann.data import load_mnist_data
-from mnistdatasetann.model import MLPClassifier, evaluate, get_optimizer, get_scheduler, train
+from mnistdatasetann.model import (
+    CNNClassifier,
+    MLPClassifier,
+    evaluate,
+    get_optimizer,
+    get_scheduler,
+    train,
+)
 from mnistdatasetann.utils import visualize_confusion_matrix, visualize_misclassified
 
 RANDOM_SEED = 42
@@ -35,6 +42,9 @@ def parse_cli_args() -> TrainingArgs:
     parser = argparse.ArgumentParser(
         description="MNIST classifier training entry point.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--model-type", type=str, choices=["mlp", "cnn"], default="mlp", help="Model Type"
     )
     parser.add_argument("--epochs", type=int, default=20, help="Number of training epochs.")
     parser.add_argument("--dropout", type=float, default=0.0, help="Dropout rate.")
@@ -103,6 +113,19 @@ def parse_cli_args() -> TrainingArgs:
         default=True,
         help="Enable or disable TensorBoard experiment tracking.",
     )
+    parser.add_argument(
+        "--conv-channels",
+        type=int,
+        nargs="+",
+        default=[32, 64],
+        help="List of output channel depths for each convolutional block.",
+    )
+    parser.add_argument(
+        "--fc-hidden",
+        type=int,
+        default=128,
+        help="Number of hidden units in the dense classification head.",
+    )
 
     return parser.parse_args(namespace=TrainingArgs())
 
@@ -140,7 +163,7 @@ def main() -> None:
     y_val = torch.tensor(dataset.y_val, dtype=torch.long)
     y_test = torch.tensor(dataset.y_test, dtype=torch.long)
 
-    n_features = X_train.shape[1]
+    n_features = dataset.num_flattened_features
     n_classes = len(dataset.classes)
 
     train_dataset = TensorDataset(X_train, y_train)
@@ -151,15 +174,25 @@ def main() -> None:
     val_loader = DataLoader(val_dataset, shuffle=False, batch_size=256)
     _test_loader = DataLoader(test_dataset, shuffle=False, batch_size=256)
 
-    model_init_args = {
-        "hidden": args.hidden,
-        "in_dim": n_features,
-        "out_dim": n_classes,
-        "dropout": args.dropout,
-        "use_batchnorm": args.use_batchnorm,
-    }
+    if args.model_type == "mlp":
+        model_init_args = {
+            "hidden": args.hidden,
+            "in_dim": n_features,
+            "out_dim": n_classes,
+            "dropout": args.dropout,
+            "use_batchnorm": args.use_batchnorm,
+        }
+    else:
+        model_init_args = {
+            "in_dims": dataset.image_shape,
+            "conv_channels": args.conv_channels,
+            "fc_hidden": args.fc_hidden,
+            "num_classes": n_classes,
+            "dropout": args.dropout,
+        }
 
-    model = MLPClassifier(**model_init_args).to(device)
+    model_class = MLPClassifier if args.model_type == "mlp" else CNNClassifier
+    model = model_class(**model_init_args).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = get_optimizer(model, args.optimizer, args.lr, args.weight_decay, args.momentum)
     lr_scheduler = get_scheduler(
@@ -218,6 +251,7 @@ def main() -> None:
     if writer is not None:
         writer.add_hparams(
             hparam_dict={
+                "model_type": args.model_type,
                 "lr": args.lr,
                 "optimizer": args.optimizer,
                 "batch_size": args.batch_size,

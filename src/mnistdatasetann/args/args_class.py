@@ -29,8 +29,11 @@ class TrainingArgs:
         lr_decay_factor: Multiplicative factor for plateau and step LR decay.
         lr_step_size: Epoch interval for StepLR decay.
         use_tensorboard: Whether to enable TensorBoard for tracking and diagnostics.
+        conv_channels: List of output channel depths for each convolutional block.
+        fc_hidden: Number of hidden units in the dense classification head.
     """
 
+    model_type: Literal["mlp", "cnn"] = "mlp"
     epochs: int = 20
     patience: int = 10
     dropout: float = 0.0
@@ -46,3 +49,5 @@ class TrainingArgs:
     lr_decay_factor: float = 0.5
     lr_step_size: int = 5
     use_tensorboard: bool = True
+    conv_channels: list[int] = field(default_factory=lambda: [32, 64])
+    fc_hidden: int = 128

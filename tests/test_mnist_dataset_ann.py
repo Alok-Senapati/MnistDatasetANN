@@ -14,7 +14,14 @@ import torch
 from PIL import Image
 
 from mnistdatasetann.data import load_mnist_data
-from mnistdatasetann.model import MLPClassifier, evaluate, get_optimizer, get_scheduler, load_model
+from mnistdatasetann.model import (
+    CNNClassifier,
+    MLPClassifier,
+    evaluate,
+    get_optimizer,
+    get_scheduler,
+    load_model,
+)
 from mnistdatasetann.utils.diagnose import compute_gradient_norms
 from mnistdatasetann.utils.preprocessor import preprocess_image
 from mnistdatasetann.utils.printer import section_printer
@@ -118,6 +125,33 @@ class TestMLPClassifier(unittest.TestCase):
         self.assertEqual(predictions.shape, (5,))
 
 
+class TestCNNClassifier(unittest.TestCase):
+    """Smoke and behavioral tests for the CNNClassifier architecture and outputs."""
+
+    def test_cnn_forward_with_4d_and_2d_inputs(self) -> None:
+        model = CNNClassifier(
+            in_dims=(1, 28, 28),
+            conv_channels=(8, 16),
+            fc_hidden=32,
+            num_classes=10,
+            dropout=0.1,
+        )
+
+        inputs_4d = torch.randn(4, 1, 28, 28)
+        inputs_2d = torch.randn(4, 784)
+
+        logits_4d = model(inputs_4d)
+        logits_2d = model(inputs_2d)
+        probabilities = model.predict_proba(inputs_2d)
+        predictions = model.predict(inputs_2d)
+
+        self.assertEqual(logits_4d.shape, (4, 10))
+        self.assertEqual(logits_2d.shape, (4, 10))
+        self.assertEqual(probabilities.shape, (4, 10))
+        self.assertTrue(torch.allclose(probabilities.sum(dim=1), torch.ones(4), atol=1e-5))
+        self.assertEqual(predictions.shape, (4,))
+
+
 class TestOptimizerFactory(unittest.TestCase):
     """Confirm the optimizer factory returns the expected backend objects."""
 
@@ -156,6 +190,35 @@ class TestModelLoader(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             checkpoint_path = Path(tmp_dir) / "model.pt"
+            checkpoint = {
+                "model_meta": {
+                    "class_name": original_model.__class__.__name__,
+                    "module_path": original_model.__class__.__module__,
+                    "init_args": init_args,
+                },
+                "model_state": original_model.state_dict(),
+            }
+            torch.save(checkpoint, checkpoint_path)
+
+            loaded_model = load_model(checkpoint_path)
+            loaded_preds = loaded_model.predict(inputs)
+
+            self.assertTrue(torch.equal(expected_preds, loaded_preds))
+
+    def test_save_and_load_cnn_model_matches_outputs(self) -> None:
+        init_args = {
+            "in_dims": (1, 28, 28),
+            "conv_channels": [8, 16],
+            "fc_hidden": 32,
+            "num_classes": 10,
+            "dropout": 0.0,
+        }
+        original_model = CNNClassifier(**init_args).eval()
+        inputs = torch.randn(3, 784)
+        expected_preds = original_model.predict(inputs)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkpoint_path = Path(tmp_dir) / "cnn_model.pt"
             checkpoint = {
                 "model_meta": {
                     "class_name": original_model.__class__.__name__,

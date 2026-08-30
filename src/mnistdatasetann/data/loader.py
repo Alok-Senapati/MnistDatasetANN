@@ -26,6 +26,8 @@ class MnistData:
         y_val: Label vector for the validation split.
         X_test: Feature matrix for the test split.
         y_test: Label vector for the test split.
+        num_flattened_features: Number of features of the flattened images.
+        image_shape: Shape of the image.
         max_pixel_value: Maximum pixel value observed in the training split before scaling.
         is_normalized: Whether pixel values were normalized to the training max.
         label_proportions: Percentage distribution of digits in the training set.
@@ -38,6 +40,8 @@ class MnistData:
     y_val: np.ndarray
     X_test: np.ndarray
     y_test: np.ndarray
+    num_flattened_features: int
+    image_shape: tuple[int, int, int]
     max_pixel_value: float
     is_normalized: bool
     label_proportions: dict[str, float]
@@ -118,6 +122,8 @@ def load_mnist_data(random_seed: int = 42, normalize: bool = True) -> MnistData:
         y_val=y_val,
         X_test=X_test,
         y_test=y_test,
+        num_flattened_features=784,
+        image_shape=(1, 28, 28),
         max_pixel_value=max_value,
         is_normalized=normalize,
         label_proportions=label_proportions,
