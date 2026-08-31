@@ -12,6 +12,11 @@ import torch
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
+from mnistdatasetann.explainability import (
+    GradCAM,
+    compute_saliency_map,
+    visualize_explanations,
+)
 from mnistdatasetann.model import load_model
 from mnistdatasetann.utils import preprocess_image, visualize_feature_maps
 
@@ -163,6 +168,31 @@ def render_prediction_dashboard(
                 max_channels_per_layer=16,
             )
             st.pyplot(fig_fmaps)
+
+    with st.expander("🧠 Explain Prediction (Saliency & Attention Heatmaps)", expanded=False):
+        st.markdown(
+            "Visualizing the exact pixel regions and convolutional filter attention "
+            "that contributed to this prediction:"
+        )
+        saliency = compute_saliency_map(model, input_tensor[:1], target_class=predicted_digit)
+
+        gradcam_map = None
+        if hasattr(model, "conv_layers"):
+            try:
+                gradcam = GradCAM(model)
+                gradcam_map = gradcam.generate_cam(input_tensor[:1], target_class=predicted_digit)
+                gradcam.remove_hooks()
+            except Exception:
+                gradcam_map = None
+
+        fig_explain = visualize_explanations(
+            raw_image=feature_array[0],
+            saliency_map=saliency,
+            gradcam_map=gradcam_map,
+            predicted_class=predicted_digit,
+            confidence=confidence,
+        )
+        st.pyplot(fig_explain)
 
 
 def main() -> None:

@@ -14,6 +14,11 @@ import torch
 from PIL import Image
 
 from mnistdatasetann.data import AugmentedDataset, get_train_transforms, load_mnist_data
+from mnistdatasetann.explainability import (
+    GradCAM,
+    compute_saliency_map,
+    visualize_explanations,
+)
 from mnistdatasetann.model import (
     CNNClassifier,
     MLPClassifier,
@@ -406,6 +411,56 @@ class TestAugmentation(unittest.TestCase):
         x_aug, y_val = dataset[0]
         self.assertEqual(x_aug.shape, (784,))
         self.assertEqual(int(y_val), 0)
+
+
+class TestExplainability(unittest.TestCase):
+    """Validate Saliency Maps and Grad-CAM explainability generators."""
+
+    def test_saliency_map_generation(self) -> None:
+        model = CNNClassifier(
+            in_dims=(1, 28, 28),
+            conv_channels=(8, 16),
+            fc_hidden=32,
+            num_classes=10,
+        )
+        dummy_input = torch.randn(1, 1, 28, 28)
+        saliency = compute_saliency_map(model, dummy_input)
+
+        self.assertEqual(saliency.shape, (28, 28))
+        self.assertGreaterEqual(float(saliency.min()), 0.0)
+        self.assertLessEqual(float(saliency.max()), 1.0 + 1e-6)
+
+    def test_gradcam_generation_and_cleanup(self) -> None:
+        model = CNNClassifier(
+            in_dims=(1, 28, 28),
+            conv_channels=(8, 16),
+            fc_hidden=32,
+            num_classes=10,
+        )
+        dummy_input = torch.randn(1, 1, 28, 28)
+        gradcam = GradCAM(model)
+        cam = gradcam.generate_cam(dummy_input, target_class=3)
+
+        self.assertEqual(cam.shape, (28, 28))
+        self.assertGreaterEqual(float(cam.min()), 0.0)
+        self.assertLessEqual(float(cam.max()), 1.0 + 1e-6)
+
+        gradcam.remove_hooks()
+        self.assertEqual(len(gradcam.handles), 0)
+
+    def test_visualize_explanations(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_path = Path(tmp_dir) / "explain_plot"
+            fig = visualize_explanations(
+                raw_image=np.random.rand(28, 28),
+                saliency_map=np.random.rand(28, 28),
+                gradcam_map=np.random.rand(28, 28),
+                predicted_class=7,
+                confidence=98.5,
+                save_path=out_path,
+            )
+            self.assertIsNotNone(fig)
+            self.assertTrue(out_path.with_suffix(".png").exists())
 
 
 if __name__ == "__main__":
