@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 
 from mnistdatasetann.args.args_class import TrainingArgs
-from mnistdatasetann.data import AugmentedDataset, get_train_transforms, load_mnist_data
+from mnistdatasetann.data import get_train_transforms, load_mnist_data
 from mnistdatasetann.model import (
     CNNClassifier,
     MLPClassifier,
@@ -188,20 +188,14 @@ def main() -> None:
     n_features = dataset.num_flattened_features
     n_classes = len(dataset.classes)
 
-    if args.use_augmentation:
-        train_transforms = get_train_transforms(
-            degrees=args.augment_degrees,
-            translate=args.augment_translate,
-            scale=(args.augment_scale_min, args.augment_scale_max),
-        )
-        train_dataset = AugmentedDataset(X_train, y_train, transform=train_transforms)
-    else:
-        train_dataset = TensorDataset(X_train, y_train)
+    train_dataset = TensorDataset(X_train, y_train)
 
     val_dataset = TensorDataset(X_val, y_val)
     test_dataset = TensorDataset(X_test, y_test)
 
-    train_loader = DataLoader(train_dataset, shuffle=True, batch_size=args.batch_size)
+    train_loader = DataLoader(
+        train_dataset, shuffle=True, batch_size=args.batch_size, pin_memory=(device == "cuda")
+    )
     val_loader = DataLoader(val_dataset, shuffle=False, batch_size=256)
     _test_loader = DataLoader(test_dataset, shuffle=False, batch_size=256)
 
@@ -237,6 +231,14 @@ def main() -> None:
     if args.use_tensorboard:
         writer = SummaryWriter(log_dir=str(artifacts_dir / "tensorboard"))
 
+    gpu_transforms: nn.Module | None = None
+    if args.use_augmentation:
+        gpu_transforms = get_train_transforms(
+            degrees=args.augment_degrees,
+            translate=args.augment_translate,
+            scale=(args.augment_scale_min, args.augment_scale_max),
+        ).to(device)
+
     _, best_model = train(
         train_loader=train_loader,
         val_loader=val_loader,
@@ -251,6 +253,7 @@ def main() -> None:
         patience=args.patience,
         use_tensorboard=args.use_tensorboard,
         writer=writer,
+        transform=gpu_transforms,
     )
 
     results = evaluate(

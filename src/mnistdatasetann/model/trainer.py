@@ -109,6 +109,7 @@ def train(
     patience: int = 10,
     use_tensorboard: bool = True,
     writer: SummaryWriter | None = None,
+    transform: nn.Module | None = None,
 ) -> tuple[nn.Module, nn.Module]:
     """Train the model with early stopping, diagnostics logging, and save checkpoints.
 
@@ -127,6 +128,7 @@ def train(
         use_tensorboard: Whether to enable TensorBoard experiment tracking.
         writer: Optional external SummaryWriter instance. If None and use_tensorboard is True,
             a new SummaryWriter will be initialized and closed at the end of training.
+        transform: Optional transformer for Augmentation
 
     Returns:
         A tuple containing (final_model, best_saved_model).
@@ -158,7 +160,12 @@ def train(
 
             for xb, yb in train_loader:
                 optimizer.zero_grad()
-                xb, yb = xb.to(device), yb.to(device)
+                xb, yb = xb.to(device, non_blocking=True), yb.to(device, non_blocking=True)
+
+                if transform is not None:
+                    xb = xb.reshape(-1, 1, 28, 28)
+                    xb = transform(xb)
+
                 logits_train = model(xb)
                 loss = criterion(logits_train, yb)
                 loss.backward()
