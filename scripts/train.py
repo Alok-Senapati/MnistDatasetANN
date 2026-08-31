@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 
 from mnistdatasetann.args.args_class import TrainingArgs
-from mnistdatasetann.data import load_mnist_data
+from mnistdatasetann.data import AugmentedDataset, get_train_transforms, load_mnist_data
 from mnistdatasetann.model import (
     CNNClassifier,
     MLPClassifier,
@@ -130,6 +130,24 @@ def parse_cli_args() -> TrainingArgs:
         default=128,
         help="Number of hidden units in the dense classification head.",
     )
+    parser.add_argument(
+        "--use-augmentation",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable stochastic on-the-fly data augmentation for training.",
+    )
+    parser.add_argument(
+        "--augment-degrees",
+        type=float,
+        default=12.0,
+        help="Maximum rotation angle in degrees for data augmentation.",
+    )
+    parser.add_argument(
+        "--augment-translate",
+        type=float,
+        default=0.08,
+        help="Maximum translation shift fraction for data augmentation.",
+    )
 
     return parser.parse_args(namespace=TrainingArgs())
 
@@ -170,7 +188,16 @@ def main() -> None:
     n_features = dataset.num_flattened_features
     n_classes = len(dataset.classes)
 
-    train_dataset = TensorDataset(X_train, y_train)
+    if args.use_augmentation:
+        train_transforms = get_train_transforms(
+            degrees=args.augment_degrees,
+            translate=args.augment_translate,
+            scale=(args.augment_scale_min, args.augment_scale_max),
+        )
+        train_dataset = AugmentedDataset(X_train, y_train, transform=train_transforms)
+    else:
+        train_dataset = TensorDataset(X_train, y_train)
+
     val_dataset = TensorDataset(X_val, y_val)
     test_dataset = TensorDataset(X_test, y_test)
 
@@ -252,7 +279,7 @@ def main() -> None:
         fig_fmaps = visualize_feature_maps(
             feature_maps=fmaps,
             raw_image=X_test[0].numpy(),
-            max_channels_per_layer=16,
+            max_channels_per_layer=64,
             save_path=artifacts_dir / "conv_feature_maps.png",
         )
         if writer is not None:
@@ -268,6 +295,7 @@ def main() -> None:
         writer.add_hparams(
             hparam_dict={
                 "model_type": args.model_type,
+                "use_augmentation": args.use_augmentation,
                 "lr": args.lr,
                 "optimizer": args.optimizer,
                 "batch_size": args.batch_size,

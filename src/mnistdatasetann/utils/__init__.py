@@ -6,6 +6,7 @@ from .printer import section_printer
 from .timer import Timer
 from .visualizer import (
     visualize_accuracy,
+    visualize_augmentations,
     visualize_confusion_matrix,
     visualize_feature_maps,
     visualize_loss,
@@ -21,6 +22,7 @@ __all__ = [
     "visualize_confusion_matrix",
     "visualize_misclassified",
     "visualize_feature_maps",
+    "visualize_augmentations",
     "compute_gradient_norms",
     "preprocess_image",
     "Timer",

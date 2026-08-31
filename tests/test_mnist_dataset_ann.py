@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from mnistdatasetann.data import load_mnist_data
+from mnistdatasetann.data import AugmentedDataset, get_train_transforms, load_mnist_data
 from mnistdatasetann.model import (
     CNNClassifier,
     MLPClassifier,
@@ -28,6 +28,7 @@ from mnistdatasetann.utils.printer import section_printer
 from mnistdatasetann.utils.timer import Timer
 from mnistdatasetann.utils.visualizer import (
     visualize_accuracy,
+    visualize_augmentations,
     visualize_confusion_matrix,
     visualize_feature_maps,
     visualize_loss,
@@ -367,12 +368,44 @@ class TestVisualizationHelpers(unittest.TestCase):
                 save_path=fmaps_path,
             )
 
+            aug_path = output_dir / "aug_plot"
+            visualize_augmentations(
+                sample_image=np.random.rand(28, 28),
+                transform=get_train_transforms(degrees=10.0),
+                num_variations=4,
+                save_path=aug_path,
+            )
+
             self.assertTrue((loss_path.with_suffix(".png")).exists())
             self.assertTrue((accuracy_path.with_suffix(".png")).exists())
             self.assertTrue((lr_path.with_suffix(".png")).exists())
             self.assertTrue((cm_path.with_suffix(".png")).exists())
             self.assertTrue((misclassified_path.with_suffix(".png")).exists())
             self.assertTrue((fmaps_path.with_suffix(".png")).exists())
+            self.assertTrue((aug_path.with_suffix(".png")).exists())
+
+
+class TestAugmentation(unittest.TestCase):
+    """Validate data augmentation pipeline and AugmentedDataset wrapper."""
+
+    def test_get_train_transforms_creates_pipeline(self) -> None:
+        transforms = get_train_transforms(degrees=15.0, translate=0.1, scale=(0.9, 1.1))
+        dummy_sample = torch.randn(1, 28, 28)
+        augmented = transforms(dummy_sample)
+
+        self.assertEqual(augmented.shape, (1, 28, 28))
+
+    def test_augmented_dataset_retrieval(self) -> None:
+        features = torch.randn(10, 784)
+        labels = torch.tensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        transforms = get_train_transforms(degrees=10.0)
+
+        dataset = AugmentedDataset(features, labels, transform=transforms)
+
+        self.assertEqual(len(dataset), 10)
+        x_aug, y_val = dataset[0]
+        self.assertEqual(x_aug.shape, (784,))
+        self.assertEqual(int(y_val), 0)
 
 
 if __name__ == "__main__":

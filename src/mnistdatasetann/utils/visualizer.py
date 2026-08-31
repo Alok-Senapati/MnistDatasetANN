@@ -348,3 +348,63 @@ def visualize_feature_maps(
         plt.close(fig)
 
     return fig
+
+
+def visualize_augmentations(
+    sample_image: np.ndarray | torch.Tensor,
+    transform: callable | None = None,
+    num_variations: int = 8,
+    save_path: Path | None = None,
+) -> plt.Figure:
+    """Plot the original digit alongside stochastic data augmentation variations.
+
+    Args:
+        sample_image: 1D `(784,)` or 2D `(28, 28)` image array.
+        transform: Callable torchvision transform pipeline.
+        num_variations: Number of stochastic variations to generate. Defaults to 8.
+        save_path: Optional output path for the saved PNG figure.
+
+    Returns:
+        The matplotlib `Figure` containing the augmentation grid.
+    """
+    if isinstance(sample_image, torch.Tensor):
+        base_arr = sample_image.detach().cpu().numpy()
+    else:
+        base_arr = np.asarray(sample_image)
+
+    if base_arr.ndim == 1:
+        base_arr = base_arr.reshape(28, 28)
+
+    total_cols = num_variations + 1
+    fig, axes = plt.subplots(1, total_cols, figsize=(2.2 * total_cols, 2.8))
+
+    # Panel 0: Original
+    axes[0].imshow(base_arr, cmap="gray")
+    axes[0].set_title("Original\n(Input)", fontsize=10, fontweight="bold")
+    axes[0].axis("off")
+
+    tensor_input = torch.tensor(base_arr, dtype=torch.float32).reshape(1, 28, 28)
+
+    # Panels 1..N: Stochastic Augmented Variations
+    for i in range(1, total_cols):
+        if transform is not None:
+            aug_tensor = transform(tensor_input)
+            aug_arr = aug_tensor.squeeze().numpy()
+        else:
+            aug_arr = base_arr
+
+        axes[i].imshow(aug_arr, cmap="gray")
+        axes[i].set_title(f"Augmented\n#{i}", fontsize=9)
+        axes[i].axis("off")
+
+    fig.tight_layout()
+
+    if save_path is not None:
+        target = Path(save_path)
+        if target.suffix == "":
+            target = target.with_suffix(".png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(target, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+
+    return fig

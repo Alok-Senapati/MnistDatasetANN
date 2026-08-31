@@ -163,4 +163,3 @@ class CNNClassifier(nn.Module):
             feature_maps[name] = conv_out.detach().cpu()
 
         return feature_maps
-

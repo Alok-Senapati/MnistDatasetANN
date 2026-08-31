@@ -14,6 +14,7 @@ class TrainingArgs:
     and passed through the training pipeline without extra conversion logic.
 
     Attributes:
+        model_type: Architecture to instantiate (`mlp` or `cnn`).
         epochs: Maximum number of training epochs to run.
         patience: Number of validation stalls allowed before early stopping triggers.
         dropout: Dropout probability applied after hidden layers.
@@ -31,6 +32,11 @@ class TrainingArgs:
         use_tensorboard: Whether to enable TensorBoard for tracking and diagnostics.
         conv_channels: List of output channel depths for each convolutional block.
         fc_hidden: Number of hidden units in the dense classification head.
+        use_augmentation: Whether to enable stochastic on-the-fly data augmentation.
+        augment_degrees: Maximum random rotation angle in degrees `(-degrees, +degrees)`.
+        augment_translate: Maximum random translation shift fraction.
+        augment_scale_min: Minimum random scale factor.
+        augment_scale_max: Maximum random scale factor.
     """
 
     model_type: Literal["mlp", "cnn"] = "mlp"
@@ -51,3 +57,8 @@ class TrainingArgs:
     use_tensorboard: bool = True
     conv_channels: list[int] = field(default_factory=lambda: [32, 64])
     fc_hidden: int = 128
+    use_augmentation: bool = False
+    augment_degrees: float = 12.0
+    augment_translate: float = 0.08
+    augment_scale_min: float = 0.92
+    augment_scale_max: float = 1.08
