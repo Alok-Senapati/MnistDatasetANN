@@ -26,6 +26,7 @@ dependencies = [
     "pillow>=10.0.0",
     "scipy-stubs~=1.18.1",
     "streamlit-drawable-canvas>=0.9.3",
+    "optuna>=4.0.0",
 ]
 
 [dependency-groups]
