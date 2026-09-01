@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torchvision
 from sklearn.model_selection import train_test_split
 
 from mnistdatasetann.utils import section_printer
@@ -65,17 +66,28 @@ def load_mnist_data(random_seed: int = 42, normalize: bool = True) -> MnistData:
     train_path = DATA_PATH / "mnist_train.csv"
     test_path = DATA_PATH / "mnist_test.csv"
 
-    if not train_path.exists() or not test_path.exists():
-        msg = "MNIST CSV files were not found. Generate them with data/generate_mnist_csv.py."
-        raise FileNotFoundError(msg)
+    try:
+        if not train_path.exists() or not test_path.exists():
+            msg = "MNIST CSV files were not found. Generate them with data/generate_mnist_csv.py."
+            raise FileNotFoundError(msg)
 
-    train = pd.read_csv(train_path, header=None)
-    test = pd.read_csv(test_path, header=None)
+        train = pd.read_csv(train_path, header=None)
+        test = pd.read_csv(test_path, header=None)
 
-    X = train.iloc[:, 1:].to_numpy()
-    y = train.iloc[:, 0].to_numpy()
-    X_test = test.iloc[:, 1:].to_numpy()
-    y_test = test.iloc[:, 0].to_numpy()
+        X = train.iloc[:, 1:].to_numpy()
+        y = train.iloc[:, 0].to_numpy()
+        X_test = test.iloc[:, 1:].to_numpy()
+        y_test = test.iloc[:, 0].to_numpy()
+
+    except Exception as e:
+        print(f"Local MNIST CSVs unavailable ({e}). Downloading dataset via torchvision...")
+        train = torchvision.datasets.MNIST(str(DATA_PATH), train=True, download=True)
+        test = torchvision.datasets.MNIST(str(DATA_PATH), train=False, download=True)
+        X = train.data.reshape(-1, 784).numpy()
+        y = train.targets.numpy()
+
+        X_test = test.data.reshape(-1, 784).numpy()
+        y_test = test.targets.numpy()
 
     X_train, X_val, y_train, y_val = train_test_split(
         X,
