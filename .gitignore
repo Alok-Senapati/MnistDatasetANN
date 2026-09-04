@@ -27,6 +27,8 @@ htmlcov/
 artifacts/
 data/*.zip
 *.log
+*.db
+*.sqlite*
 
 # IDE / editor files
 .idea/

@@ -27,6 +27,7 @@ dependencies = [
     "scipy-stubs~=1.18.1",
     "streamlit-drawable-canvas>=0.9.3",
     "optuna>=4.0.0",
+    "optuna-dashboard>=0.20.0",
 ]
 
 [dependency-groups]
@@ -45,7 +46,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 
 [tool.uv]
 package = true

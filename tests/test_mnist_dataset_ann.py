@@ -463,5 +463,98 @@ class TestExplainability(unittest.TestCase):
             self.assertTrue(out_path.with_suffix(".png").exists())
 
 
+class TestTuneV2(unittest.TestCase):
+    """Validate hyperparameter tuning pipeline utilities in tuneV2."""
+
+    def test_parse_tune_args(self) -> None:
+        from scripts.tuneV2 import parse_tune_args
+
+        default_args = parse_tune_args([])
+        self.assertEqual(default_args.model_type, "cnn")
+        self.assertEqual(default_args.n_trials, 15)
+        self.assertEqual(default_args.epochs_per_trial, 8)
+        self.assertTrue(default_args.prune)
+
+        custom_args = parse_tune_args(
+            [
+                "--model-type",
+                "mlp",
+                "--n-trials",
+                "3",
+                "--epochs-per-trial",
+                "2",
+                "--study-name",
+                "test_study",
+                "--storage",
+                "sqlite:///test.db",
+                "--no-prune",
+            ]
+        )
+        self.assertEqual(custom_args.model_type, "mlp")
+        self.assertEqual(custom_args.n_trials, 3)
+        self.assertEqual(custom_args.epochs_per_trial, 2)
+        self.assertEqual(custom_args.study_name, "test_study")
+        self.assertEqual(custom_args.storage, "sqlite:///test.db")
+        self.assertFalse(custom_args.prune)
+
+    def test_objective_smoke_run_mlp(self) -> None:
+        import optuna
+
+        from scripts.tuneV2 import objective
+
+        dataset_tensors = {
+            "X_train": torch.randn(16, 784),
+            "X_val": torch.randn(8, 784),
+            "y_train": torch.randint(0, 10, (16,), dtype=torch.long),
+            "y_val": torch.randint(0, 10, (8,), dtype=torch.long),
+        }
+
+        study = optuna.create_study(direction="maximize")
+        study.optimize(
+            lambda trial: objective(
+                trial=trial,
+                dataset_tensors=dataset_tensors,
+                image_shape=(1, 28, 28),
+                classes=list(range(10)),
+                model_type_choice="mlp",
+                epochs=1,
+                device="cpu",
+                enable_pruner=False,
+            ),
+            n_trials=1,
+        )
+        self.assertEqual(len(study.trials), 1)
+        self.assertGreaterEqual(study.best_value, 0.0)
+
+    def test_objective_smoke_run_cnn(self) -> None:
+        import optuna
+
+        from scripts.tuneV2 import objective
+
+        dataset_tensors = {
+            "X_train": torch.randn(8, 784),
+            "X_val": torch.randn(4, 784),
+            "y_train": torch.randint(0, 10, (8,), dtype=torch.long),
+            "y_val": torch.randint(0, 10, (4,), dtype=torch.long),
+        }
+
+        study = optuna.create_study(direction="maximize")
+        study.optimize(
+            lambda trial: objective(
+                trial=trial,
+                dataset_tensors=dataset_tensors,
+                image_shape=(1, 28, 28),
+                classes=list(range(10)),
+                model_type_choice="cnn",
+                epochs=1,
+                device="cpu",
+                enable_pruner=False,
+            ),
+            n_trials=1,
+        )
+        self.assertEqual(len(study.trials), 1)
+        self.assertGreaterEqual(study.best_value, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
