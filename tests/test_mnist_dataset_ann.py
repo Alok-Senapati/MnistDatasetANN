@@ -9,6 +9,9 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import numpy as np
 import torch
 from PIL import Image
@@ -130,6 +133,23 @@ class TestMLPClassifier(unittest.TestCase):
         self.assertEqual(probabilities.shape, (5, 3))
         self.assertTrue(torch.allclose(probabilities.sum(dim=1), torch.ones(5), atol=1e-5))
         self.assertEqual(predictions.shape, (5,))
+
+    def test_model_forward_with_4d_inputs(self) -> None:
+        model = MLPClassifier(
+            hidden=[16, 8],
+            in_dim=16,
+            out_dim=3,
+            dropout=0.0,
+            use_batchnorm=False,
+        )
+        inputs_4d = torch.randn(4, 1, 4, 4)
+        logits = model(inputs_4d)
+        probabilities = model.predict_proba(inputs_4d)
+        predictions = model.predict(inputs_4d)
+
+        self.assertEqual(logits.shape, (4, 3))
+        self.assertEqual(probabilities.shape, (4, 3))
+        self.assertEqual(predictions.shape, (4,))
 
 
 class TestCNNClassifier(unittest.TestCase):

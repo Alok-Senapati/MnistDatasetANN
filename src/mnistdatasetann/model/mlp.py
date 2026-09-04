@@ -75,11 +75,14 @@ class MLPClassifier(nn.Module):
         """Run the network on an input batch.
 
         Args:
-            X: Input tensor of shape ``(batch_size, in_dim)``.
+            X: Input tensor of shape ``(batch_size, in_dim)`` or
+                spatial ``(batch_size, 1, 28, 28)``.
 
         Returns:
             Unnormalized class logits for each sample in the batch.
         """
+        if X.ndim > 2:
+            X = X.flatten(1)
         hidden_output = self.hidden_layers(X)
         return self.head(hidden_output)
 
@@ -88,11 +91,14 @@ class MLPClassifier(nn.Module):
         """Return class probabilities for each sample in the batch.
 
         Args:
-            X: Input tensor of shape ``(batch_size, in_dim)``.
+            X: Input tensor of shape ``(batch_size, in_dim)`` or
+                spatial ``(batch_size, 1, 28, 28)``.
 
         Returns:
             A probability distribution over output classes for each row in ``X``.
         """
+        if X.ndim > 2:
+            X = X.flatten(1)
         logits = self.head(self.hidden_layers(X))
         return F.softmax(logits, dim=1)
 
@@ -101,10 +107,13 @@ class MLPClassifier(nn.Module):
         """Return the highest-probability class index for each row in ``X``.
 
         Args:
-            X: Input tensor of shape ``(batch_size, in_dim)``.
+            X: Input tensor of shape ``(batch_size, in_dim)`` or
+                spatial ``(batch_size, 1, 28, 28)``.
 
         Returns:
             Class indices selected by the model for each sample in the batch.
         """
+        if X.ndim > 2:
+            X = X.flatten(1)
         logits = self.head(self.hidden_layers(X))
         return torch.argmax(logits, dim=1)
